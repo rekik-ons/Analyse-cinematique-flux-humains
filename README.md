@@ -7,7 +7,13 @@ Organisation
 Projet collaboratif réalisé par une équipe de trois étudiants.
 
 Technologies
-
+* Python
+* OpenCV
+* MediaPipe
+* NumPy
+* Matplotlib
+* Computer Vision
+* Human Pose Estimation
 
 
 Équipe
