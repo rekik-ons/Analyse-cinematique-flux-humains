@@ -5,14 +5,15 @@ import numpy as np
 import argparse
 
 from pose import PoseDetector
+from zones import ZoneManager
 
 
 def main():
 
-    print("Demarrage de Human Flow Analysis...")
-
     parser = argparse.ArgumentParser()
+
     parser.add_argument("--video", default=None)
+
     args = parser.parse_args()
 
     source = args.video if args.video else 0
@@ -20,19 +21,32 @@ def main():
     cap = cv2.VideoCapture(source)
 
     if not cap.isOpened():
-        print("Erreur : impossible d'ouvrir la source.")
-        return
 
-    print("Source video ouverte.")
+        print("Erreur : source video inaccessible.")
+
+        return
 
     detector = None
 
     try:
 
         detector = PoseDetector()
+        zone = ZoneManager()
 
-        print("MediaPipe initialise.")
-        print("Appuyez sur Q pour quitter.")
+        window_name = "Human Flow Analysis - WP2"
+
+        cv2.namedWindow(window_name)
+
+        cv2.setMouseCallback(
+            window_name,
+            zone.mouse_callback
+        )
+
+        print("Clic gauche : ajouter un sommet")
+        print("Clic droit : supprimer le dernier sommet")
+        print("S : sauvegarder la zone")
+        print("R : reinitialiser la zone")
+        print("Q : quitter")
 
         start_time = time.perf_counter()
         previous_time = start_time
@@ -50,40 +64,75 @@ def main():
             ret, frame = cap.read()
 
             if not ret:
-                print("Fin de la video ou erreur de lecture.")
                 break
 
             h, w = frame.shape[:2]
 
-            # Horodatage
             if args.video:
+
                 timestamp = int(
                     frame_index * 1000 / source_fps
                 )
+
             else:
+
                 timestamp = int(
                     (time.perf_counter() - start_time) * 1000
                 )
 
-            timestamp = max(timestamp, last_timestamp + 1)
+            timestamp = max(
+                timestamp,
+                last_timestamp + 1
+            )
 
             last_timestamp = timestamp
             frame_index += 1
 
-            # Detection automatique des articulations
             keypoints = detector.extract_keypoints(
                 frame, timestamp
             )
 
-            # Fond noir pour respecter l'anonymat
+            # Affichage anonymise
             display = np.zeros_like(frame)
+
+            hip = None
+            intrusion = False
+
+            status = "Aucune pose detectee"
+            color = (255, 255, 255)
 
             if keypoints is not None:
 
-                detector.draw_skeleton(display, keypoints)
+                hip = detector.get_hip_center(
+                    keypoints
+                )
 
-                # Centre des hanches
-                hip = detector.get_hip_center(keypoints)
+                intrusion = zone.contains(hip)
+
+                if not zone.validated:
+
+                    status = "Zone non configuree"
+                    color = (0, 255, 255)
+
+                elif intrusion:
+
+                    status = "INTRUSION"
+                    color = (0, 0, 255)
+
+                else:
+
+                    status = "AUTORISE"
+                    color = (0, 255, 0)
+
+            # Dessiner la zone
+            zone.draw(display, intrusion)
+
+            # Dessiner le squelette
+            if keypoints is not None:
+
+                detector.draw_skeleton(
+                    display, keypoints
+                )
 
                 cx = int(hip[0] * w)
                 cy = int(hip[1] * h)
@@ -92,25 +141,9 @@ def main():
                     display,
                     (cx, cy),
                     8,
-                    (0, 0, 255),
+                    color,
                     -1
                 )
-
-                status = "Pose detectee"
-
-                cv2.putText(
-                    display,
-                    "33 points articulaires",
-                    (20, 100),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    (255, 255, 255),
-                    2
-                )
-
-            else:
-
-                status = "Aucune pose detectee"
 
             # Calcul des FPS
             current_time = time.perf_counter()
@@ -127,7 +160,7 @@ def main():
                 f"FPS: {fps:.1f}",
                 (20, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
+                0.7,
                 (0, 255, 0),
                 2
             )
@@ -137,19 +170,48 @@ def main():
                 status,
                 (20, 65),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (255, 255, 255),
+                0.8,
+                color,
                 2
             )
 
-            # Affichage du resultat
-            cv2.imshow(
-                "Human Flow Analysis - WP1",
-                display
+            if intrusion:
+
+                cv2.rectangle(
+                    display,
+                    (2, 2),
+                    (w - 3, h - 3),
+                    (0, 0, 255),
+                    5
+                )
+
+            cv2.putText(
+                display,
+                "S: Save | R: Reset | Q: Quit",
+                (10, h - 15),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                (255, 255, 255),
+                1
             )
 
-            if cv2.waitKey(1) & 0xFF == ord("q"):
+            cv2.imshow(window_name, display)
+
+            delay = (
+                max(1, int(1000 / source_fps))
+                if args.video else 1
+            )
+
+            key = cv2.waitKey(delay) & 0xFF
+
+            if key == ord("q"):
                 break
+
+            elif key == ord("s"):
+                zone.save()
+
+            elif key == ord("r"):
+                zone.reset()
 
     finally:
 
@@ -159,8 +221,6 @@ def main():
             detector.close()
 
         cv2.destroyAllWindows()
-
-        print("Programme termine.")
 
 
 if __name__ == "__main__":
