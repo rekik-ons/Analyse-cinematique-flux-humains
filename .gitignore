@@ -1,0 +1,23 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Dataset
+data/
+
+# Generated results
+outputs/
+
+# Videos
+*.avi
+*.mp4
+*.mov
+*.mkv
+
+# VS Code
+.vscode/
+
+# Local configuration
+.env
+config/zones_*.json
